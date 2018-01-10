@@ -71,7 +71,7 @@ cisc kv has the following subcommands:
   * Add - adds a key/value pair by proposing the new data to the identity
   * Rm - removes a key/value pair by proposing the new data to the identity
 ## cisc cert
-Similare to the kv-data-type but holding key/certificate pairs and allow to request certificate from let's encrypt. Note that certificate should come from let's encrypt to works.
+(Newly Added) Similare to the kv-data-type but holding key/certificate pairs and allow to request certificate from let's encrypt. Note that certificate should come from let's encrypt CA to be accepted.
 
 cisc cert has the following subcommands:
   * List- returns a list of all certificates
