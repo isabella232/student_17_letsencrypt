@@ -10,6 +10,7 @@ import (
 	"errors"
 	"crypto/rand"
  	"crypto/x509/pkix"
+ 	"fmt"
 )
 const Letsencrypt_cert =`-----BEGIN CERTIFICATE-----
 MIIEkjCCA3qgAwIBAgIQCgFBQgAAAVOFc2oLheynCDANBgkqhkiG9w0BAQsFADA/
@@ -39,16 +40,14 @@ PfZ+G6Z6h7mjem0Y+iWlkYcV4PIWL1iwBi8saCbGS5jN2p8M+X+Q7UNKEkROb3N6
 KOqkqm57TH2H3eDJAkSnh6/DNFu0Qg==
 -----END CERTIFICATE-----`
 
-const Lets_key ="Letsencrypt root key"
-
 func compare(c_old,c_new,k string ){
 	log.Info("Compare old against new cert: "+ k)
-	cert_1,err := pemToCertificate(c_old,k)
+	cert_1,err := pemToCertificate(c_old)
 	if err!= nil {
 		log.Info("the old value is not a cert")
 		return	
 	}
-	cert_2,err := pemToCertificate(c_new,k)
+	cert_2,err := pemToCertificate(c_new)
 	if err!= nil {
 		log.Info("the new value is not a cert")
 		return	
@@ -73,10 +72,10 @@ func compare(c_old,c_new,k string ){
 		}
 	}
 }
-func pemToCertificate(cert_pem,key string) (*x509.Certificate,error){
+func pemToCertificate(cert_pem string) (*x509.Certificate,error){
 	block,_ := pem.Decode([]byte(cert_pem))
 	if block == nil {
-		return nil,nil
+		return nil,errors.New("Fail decode pem")
 	}
 	cert, err := x509.ParseCertificate(block.Bytes)
 	if err != nil {
@@ -86,17 +85,17 @@ func pemToCertificate(cert_pem,key string) (*x509.Certificate,error){
 }
 
 func isCert(cert string) bool{
-	 _,err:=pemToCertificate(cert,"")
-	 return err !=nil
+	 _,err:=pemToCertificate(cert)
+	 return err ==nil
 } 
-func check(cert,k string) bool{
+func check(cert string) bool{
 	root_pool:= x509.NewCertPool()
-	cert_roots,err := pemToCertificate(Letsencrypt_cert,Lets_key)
+	cert_roots,err := pemToCertificate(Letsencrypt_cert)
 	if err !=nil{
 	        log.Info("The root cert is not valid")
 	} 
 	root_pool.AddCert(cert_roots)
-	cert_check,err:=pemToCertificate(cert,k)
+	cert_check,err:=pemToCertificate(cert)
         if err !=nil{
         	log.Info("The checked cert is not valid")
         }
@@ -113,33 +112,39 @@ func check(cert,k string) bool{
 	}
 	
 }
-func updateCert(uri string ) string{
+func renewCert(cert string ) string{
+	
+	oldcert,err:=pemToCertificate(cert)
+	if err !=nil{
+		log.Fatal(err)
+	}
+	//get the serial number and compute the URI
+	serial:=fmt.Sprintf("%x", oldcert.SerialNumber)
+	certuri:="https://acme-v01.api.letsencrypt.org/acme/cert/0"+serial
 	// Create a client to the acme of letsencrypt.
 	cli, err := letsencrypt.NewClient("https://acme-v01.api.letsencrypt.org/directory")
 	if err != nil {
 		log.Fatal(err)
 	}
 	//renew the certificate
-	certuri,err:=ioutil.ReadFile(uri)
-	if err!= nil{
-		log.Fatal("Problem reading uri: "+err)
-	}
-	log.Print("Cert yet exisiting")
 	cert_ren,err:=cli.RenewCertificate(string(certuri))
 	if err!=nil{
-		log.Fatal("Problem while renewing Certificate")
+		log.Fatal("Problem while renewing Certificate:" + err.Error())
 	}
 	//write in the memory
-	URI:=cert_ren.URI;
-        cert_PEM:=pem.EncodeToMemory(&pem.Block{Bytes: cert_ren.Certificate.Raw, Type: "CERTIFICATE"})
-        ioutil.WriteFile("fullchain.pem",cert_PEM,0644)
-        ioutil.WriteFile("cert_uri",[]byte(URI),0644)
+        fullchain,err:=cli.Bundle(cert_ren)
+        if err!=nil{
+        	log.Fatal("can't bundles the certificate",err)
+        }
+        ioutil.WriteFile("fullchain.pem",fullchain,0644)
         log.Info("Certificate successfully renewed")
+        //return the cert
+        cert_PEM:=pem.EncodeToMemory(&pem.Block{Bytes: cert_ren.Certificate.Raw, Type: "CERTIFICATE"})
         return string(cert_PEM)
 }
 
 
-func getCert(domain string) string{
+func revokeCert(cert string){
 	// Create a client to the acme of letsencrypt.
 	cli, err := letsencrypt.NewClient("https://acme-v01.api.letsencrypt.org/directory")
 	if err != nil {
@@ -147,14 +152,44 @@ func getCert(domain string) string{
 	}
 	// Find or generate the private key and register with the ACME server.
 	var key *rsa.PrivateKey
-	key, err = loadKey("loginkey.pem")
+	key, err = loadKey("registerkey.pem")
 	if err!= nil{
 		log.Print("new generate RSA key for register , keep it safe")
 		key, err = rsa.GenerateKey(rand.Reader, 2048)	
 		if err != nil {
 			log.Fatal(err)
 		}
-		ioutil.WriteFile("loginkey.pem", pem.EncodeToMemory(&pem.Block{Bytes: x509.MarshalPKCS1PrivateKey(key), Type: "RSA PRIVATE KEY"}), 0644)
+		ioutil.WriteFile("registerkey.pem", pem.EncodeToMemory(&pem.Block{Bytes: x509.MarshalPKCS1PrivateKey(key), Type: "RSA PRIVATE KEY"}), 0644)
+	}
+	
+	//register to the ACME server
+	if _, err := cli.NewRegistration(key); err != nil {
+		log.Fatal("Can not Register to the ACME:",err)
+	}
+	//revoke the certificate
+	re_err:= cli.RevokeCertificate(key,[]byte(cert))
+	if re_err!=nil{
+		log.Fatal("error while revoke:",re_err)
+	}
+	log.Print("Succesfully revoked")
+}
+//code addapted from :https://ericchiang.github.io/post/go-letsencrypt/ "
+func getCert(domain string) string{
+	// Create a client to the acme of letsencrypt.
+	cli, err := letsencrypt.NewClient("https://acme-v01.api.letsencrypt.org/directory")
+	if err != nil {
+		log.Fatal(err)
+	}
+	// Find or generate the private key to register on the ACME server.
+	var key *rsa.PrivateKey
+	key, err = loadKey("registerkey.pem")
+	if err!= nil{
+		log.Print("new generate RSA key for register , keep it safe")
+		key, err = rsa.GenerateKey(rand.Reader, 2048)	
+		if err != nil {
+			log.Fatal(err)
+		}
+		ioutil.WriteFile("registerkey.pem", pem.EncodeToMemory(&pem.Block{Bytes: x509.MarshalPKCS1PrivateKey(key), Type: "RSA PRIVATE KEY"}), 0644)
 	}
 	
 	//register to the ACME server
@@ -190,7 +225,7 @@ func getCert(domain string) string{
 	}
 	//copy the resource for the challenge
 	if os.MkdirAll("./.well-known/acme-challenge/",0711)!= nil {
- 		log.Fatal("problem creating new dir :",err)
+ 		log.Fatal("problem creating new dir for challenge :",err)
 	}
 	if err := ioutil.WriteFile("."+path, []byte(resource), 0644); err != nil {
 		log.Fatal(err)
@@ -199,7 +234,7 @@ func getCert(domain string) string{
 	if err := cli.ChallengeReady(key, chal); err != nil {
 		log.Fatal("Challenge not complete :", err)
 	}
-		log.Print("Challenge Complete")
+	log.Print("Challenge Complete")
 	//create a certificate request
 	csr,_,err:=newCSR(domain)
 	if err != nil {
@@ -211,13 +246,15 @@ func getCert(domain string) string{
     		log.Fatal(err)
         }
         log.Print("New Certificate Successfuly created")
-        URI:=cert.URI;
         cert_PEM:=pem.EncodeToMemory(&pem.Block{Bytes: cert.Certificate.Raw, Type: "CERTIFICATE"})
-        ioutil.WriteFile("cert.pem",cert_PEM,0644)
-        ioutil.WriteFile("cert_uri",[]byte(URI),0644)
+        fullchain,err:=cli.Bundle(cert)
+        if err!=nil{
+        	log.Fatal("can't bundles the certificate:", err)
+        }
+        ioutil.WriteFile("fullchain.pem",fullchain,0644)
         return string(cert_PEM)
 }
-
+//code adapted from :https://ericchiang.github.io/post/go-letsencrypt/ "
 func newCSR(domain string) (*x509.CertificateRequest, *rsa.PrivateKey, error) {
     var certKey *rsa.PrivateKey
     certKey, err := loadKey("privkey.pem")

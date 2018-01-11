@@ -15,13 +15,12 @@ import (
 
 	"path/filepath"
 
-	"github.com/dedis/cothority"
 	"github.com/dedis/cothority/identity"
-	"github.com/dedis/kyber"
-	"github.com/dedis/onet"
-	"github.com/dedis/onet/app"
-	"github.com/dedis/onet/log"
-	"github.com/dedis/onet/network"
+	"gopkg.in/dedis/crypto.v0/abstract"
+	"gopkg.in/dedis/onet.v1"
+	"gopkg.in/dedis/onet.v1/app"
+	"gopkg.in/dedis/onet.v1/log"
+	"gopkg.in/dedis/onet.v1/network"
 	"gopkg.in/urfave/cli.v1"
 )
 
@@ -31,8 +30,8 @@ func init() {
 }
 
 type keyPair struct {
-	Public  kyber.Point
-	Private kyber.Scalar
+	Public  abstract.Point
+	Private abstract.Scalar
 }
 
 type ciscConfig struct {
@@ -51,7 +50,7 @@ func newCiscConfig(i *identity.Identity) *ciscConfig {
 // not valid. If the config-file is missing altogether, loaded will be false and
 // an empty config-file will be returned.
 func loadConfig(c *cli.Context) (cfg *ciscConfig, loaded bool) {
-	cfg = newCiscConfig(&identity.Identity{})
+	cfg = newCiscConfig(&identity.Identity{Client: onet.NewClient(identity.ServiceName)})
 	loaded = true
 
 	configFile := getConfig(c)
@@ -63,12 +62,12 @@ func loadConfig(c *cli.Context) (cfg *ciscConfig, loaded bool) {
 		}
 		log.ErrFatal(err)
 	}
-	_, msg, err := network.Unmarshal(buf, cothority.Suite)
+	_, msg, err := network.Unmarshal(buf)
 	log.ErrFatal(err)
 	cfg, loaded = msg.(*ciscConfig)
-	cfg.Identity.Client = onet.NewClient(identity.ServiceName, cothority.Suite)
+	cfg.Identity.Client = onet.NewClient(identity.ServiceName)
 	for _, f := range cfg.Follow {
-		f.Client = onet.NewClient(identity.ServiceName, cothority.Suite)
+		f.Client = onet.NewClient(identity.ServiceName)
 	}
 	if !loaded {
 		log.Fatal("Wrong message-type in config-file")
@@ -159,14 +158,14 @@ func (cfg *ciscConfig) showDifference() {
 			log.Infof("New key: %s/%s", k, v)
 			
 		}else{ 
-			if v != orig {
-				log.Infof("Changed key: %s/%s", k, v)
-			        if(isCert(v,k)){
-			     	  	check(v,k)
-					compare(orig,v,k)
+			log.Infof("Changed key: %s/%s", k, v)
+		        //(newly added) compare old and new certificate
+		        if(isCert(v)){
+		     	  	check(v)
+		     	        if(isCert(orig)){
+					compare(orig,v,k)}
 				}
-			}
-		}
+		         }
 	}
 	for k := range cfg.Data.Storage {
 		_, ok := cfg.Proposed.Storage[k]
@@ -217,7 +216,7 @@ func getGroup(c *cli.Context) *app.Group {
 	gr, err := os.Open(gfile)
 	log.ErrFatal(err)
 	defer gr.Close()
-	groups, err := app.ReadGroupDescToml(gr, cothority.Suite)
+	groups, err := app.ReadGroupDescToml(gr)
 	log.ErrFatal(err)
 	if groups == nil || groups.Roster == nil || len(groups.Roster.List) == 0 {
 		log.Fatal("No servers found in roster from", gfile)

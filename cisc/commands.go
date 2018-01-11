@@ -6,7 +6,7 @@ import "gopkg.in/urfave/cli.v1"
 This holds the cli-commands so the main-file is less cluttered.
 */
 
-var commandAdmin, commandID, commandConfig, commandKeyvalue, commandSSH, commandFollow , commandCert cli.Command
+var commandAdmin, commandID, commandConfig, commandKeyvalue, commandSSH, commandFollow, commandCert cli.Command
 
 func init() {
 	commandAdmin = cli.Command{
@@ -57,7 +57,8 @@ func init() {
 					},
 					cli.StringFlag{
 						Name:  "type,t",
-						Usage: "type of client authentication: PoP, PIN",
+						Usage: "type of client authentication: pop, public",
+						Value: "public",
 					},
 					cli.StringFlag{
 						Name:  "cred,credentials",
@@ -289,27 +290,20 @@ func init() {
 	commandCert =cli.Command{
 		Name: "cert",
 		Aliases:[]string{"c"},
-		Usage: "Get,Storing,Verify and Retreive Certificates",
+		Usage: "Manage Certificates",
 		Subcommands: []cli.Command{
 			{
-				Name:	   "ask",
-				Aliases:   []string{"g"},
-				Usage: 	   "ask a certificate to letsencrypt and store it to the skipchain",		
+				Name:	   "request",
+				Aliases:   []string{"q"},
+				Usage: 	   "request a certificate to letsencrypt and store it to the skipchain",		
 				ArgsUsage: "name of the directory",
-				Action:     certGetStore,
+				Action:     certRequest,
 			},
 			{
 				Name:	   "add",
 				Aliases:   []string{"a"},
 				Usage:     "add a key/cert pair", 
 				ArgsUsage: "key/cert pair",
-				Action:	    certStore,
-			},
-			{
-				Name:	   "update",
-				Aliases:   []string{"u"},
-				Usage:     "update a certificate ", 
-				ArgsUsage: "domai and uri",
 				Action:	    certStore,
 			},
 			{
@@ -320,11 +314,32 @@ func init() {
 				Action:     certVerify,
 			},
 			{
+				Name:	   "renew",
+				Aliases:   []string{"u"},
+				Usage:     "renew a certificate", 
+				ArgsUsage: "the key",
+				Action:	    certRenew,
+			},
+			{
+				Name:	   "list",
+				Aliases:   []string{"l"},
+				Usage:     "list the certificate", 
+				ArgsUsage: "",
+				Action:	    certList,
+			},
+			{
+				Name:	   "revoke",
+				Aliases:   []string{"k"},
+				Usage:     "revoke and delete a certificate", 
+				ArgsUsage: "the key",
+				Action:	    certRevoke,
+			},
+			{
 				Name:	   "retrieve",
 				Aliases:   []string{"r"},
 				Usage:     "retrieve the certificate of a given key",
 				ArgsUsage: "key and optionnaly a file name to write the retrieved cert ",
 				Action:	   certRetrieve,				 	 	 	 	},
 		},
-	}
+	}	
 }

@@ -70,17 +70,7 @@ cisc kv has the following subcommands:
   * Value - returns the value of a given key
   * Add - adds a key/value pair by proposing the new data to the identity
   * Rm - removes a key/value pair by proposing the new data to the identity
-## cisc cert
-(Newly Added) Similare to the kv-data-type but holding key/certificate pairs and allow to request certificate from let's encrypt. Note that certificate should come from let's encrypt CA to be accepted.
 
-cisc cert has the following subcommands:
-  * List- returns a list of all certificates
-  * Request - request a certificate and adds it
-  * Add - add a key/certificate pairs
-  * Verify - verify one of the certificate
-  * Retrieve- retrieve one of the certificate
-  * Renew - renew one of the certificates
-  * Revoke - Revoke and remove one the certificate
 ## cisc follow
 A server can set up cisc to follow a skipchain and update the
 `authorized_keys.cisc`-file whenever a change in the list of ssh-keys occurs.
